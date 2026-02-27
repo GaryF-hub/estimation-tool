@@ -1,120 +1,114 @@
-import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
 import { EstimationSession } from "./types";
 
-export function exportToExcel(session: EstimationSession) {
-  const wb = XLSX.utils.book_new();
+function colLetter(idx: number): string {
+  let letter = "";
+  while (idx > 0) {
+    const mod = (idx - 1) % 26;
+    letter = String.fromCharCode(65 + mod) + letter;
+    idx = Math.floor((idx - 1) / 26);
+  }
+  return letter;
+}
+
+export async function exportToExcel(session: EstimationSession) {
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet("Estimation Scores");
 
   const voterCount = session.voters.length;
 
-  // Column layout: A (category), one col per voter, spacer, MIN, MAX, AVG
-  const minColIdx = voterCount + 2;
-  const maxColIdx = voterCount + 3;
-  const avgColIdx = voterCount + 4;
+  // Column indices (1-based)
+  const categoryCol = 1;
+  const firstVoterCol = 2;
+  const lastVoterCol = 1 + voterCount;
+  const spacerCol = lastVoterCol + 1;
+  const minCol = spacerCol + 1;
+  const maxCol = minCol + 1;
+  const avgCol = maxCol + 1;
 
-  const firstVoterCol = "B";
-  const lastVoterCol = XLSX.utils.encode_col(voterCount);
-  const minColLetter = XLSX.utils.encode_col(minColIdx);
-  const maxColLetter = XLSX.utils.encode_col(maxColIdx);
-  const avgColLetter = XLSX.utils.encode_col(avgColIdx);
+  const firstVoterLetter = colLetter(firstVoterCol);
+  const lastVoterLetter = colLetter(lastVoterCol);
+  const minLetter = colLetter(minCol);
+  const maxLetter = colLetter(maxCol);
+  const avgLetter = colLetter(avgCol);
 
-  // Row 1: Ticket URL/name + voter names + stat headers
-  const headerRow: (string | null)[] = [
-    session.ticketLink || session.ticketName || "",
-  ];
+  // Row 1: Header
+  const headerRow = ws.getRow(1);
+  headerRow.getCell(categoryCol).value =
+    session.ticketLink || session.ticketName || "";
   for (let i = 0; i < voterCount; i++) {
-    headerRow.push(session.voters[i].name);
+    headerRow.getCell(firstVoterCol + i).value = session.voters[i].name;
   }
-  headerRow.push(null, "MIN", "MAX", "AVG");
+  headerRow.getCell(minCol).value = "MIN";
+  headerRow.getCell(maxCol).value = "MAX";
+  headerRow.getCell(avgCol).value = "AVG";
 
-  // Row 2: Empty gap
-  const emptyRow: null[] = [];
+  // Row 2: Empty gap (left blank)
 
-  // Build all rows
-  const allRows: (string | number | boolean | null)[][] = [
-    headerRow as (string | number | boolean | null)[],
-    emptyRow,
-  ];
+  // Row 3+: Category rows
+  const firstDataRow = 3;
+  session.rows.forEach((row, idx) => {
+    const excelRow = firstDataRow + idx;
+    const wsRow = ws.getRow(excelRow);
+    wsRow.getCell(categoryCol).value = row.category;
 
-  // Category rows (row 3+ in Excel)
-  session.rows.forEach((row) => {
-    const rowData: (string | number | boolean | null)[] = [row.category];
     for (let i = 0; i < voterCount; i++) {
-      rowData.push(row.votes[session.voters[i].id] ?? null);
+      const vote = row.votes[session.voters[i].id];
+      if (vote != null) {
+        wsRow.getCell(firstVoterCol + i).value = vote;
+      }
     }
-    rowData.push(null, null, null, null);
-    allRows.push(rowData);
+
+    const range = `${firstVoterLetter}${excelRow}:${lastVoterLetter}${excelRow}`;
+    wsRow.getCell(minCol).value = {
+      formula: `IF(COUNT(${range})>0,MIN(${range}),"")`,
+    } as ExcelJS.CellFormulaValue;
+    wsRow.getCell(maxCol).value = {
+      formula: `IF(COUNT(${range})>0,MAX(${range}),"")`,
+    } as ExcelJS.CellFormulaValue;
+    wsRow.getCell(avgCol).value = {
+      formula: `IF(COUNT(${range})>0,AVERAGE(${range}),"")`,
+    } as ExcelJS.CellFormulaValue;
   });
 
   // Total row
-  const totalRowData: (string | number | boolean | null)[] = [
-    "Estimated days total",
-  ];
-  for (let i = 0; i < voterCount; i++) totalRowData.push(null);
-  totalRowData.push(null, null, null, null);
-  allRows.push(totalRowData);
+  const lastDataRow = firstDataRow + session.rows.length - 1;
+  const totalExcelRow = lastDataRow + 1;
+  const totalWsRow = ws.getRow(totalExcelRow);
+  totalWsRow.getCell(categoryCol).value = "Estimated days total";
+  const avgRange = `${avgLetter}${firstDataRow}:${avgLetter}${lastDataRow}`;
+  totalWsRow.getCell(avgCol).value = {
+    formula: `SUM(${avgRange})`,
+  } as ExcelJS.CellFormulaValue;
 
-  const ws = XLSX.utils.aoa_to_sheet(allRows);
-
-  // Formulas — data starts at row 3 (after header + empty row)
-  const firstCategoryRow = 3;
-  const lastCategoryRow = 2 + session.rows.length;
-
-  for (
-    let excelRow = firstCategoryRow;
-    excelRow <= lastCategoryRow;
-    excelRow++
-  ) {
-    const range = `${firstVoterCol}${excelRow}:${lastVoterCol}${excelRow}`;
-    ws[`${minColLetter}${excelRow}`] = {
-      t: "n",
-      f: `IF(COUNT(${range})>0,MIN(${range}),"")`,
-    };
-    ws[`${maxColLetter}${excelRow}`] = {
-      t: "n",
-      f: `IF(COUNT(${range})>0,MAX(${range}),"")`,
-    };
-    ws[`${avgColLetter}${excelRow}`] = {
-      t: "n",
-      f: `IF(COUNT(${range})>0,AVERAGE(${range}),"")`,
-    };
-  }
-
-  // Total row: SUM of AVG column
-  const totalExcelRow = lastCategoryRow + 1;
-  const avgRange = `${avgColLetter}${firstCategoryRow}:${avgColLetter}${lastCategoryRow}`;
-  ws[`${avgColLetter}${totalExcelRow}`] = { t: "n", f: `SUM(${avgRange})` };
-
-  // Number format for MIN/MAX/AVG columns
-  for (let excelRow = firstCategoryRow; excelRow <= totalExcelRow; excelRow++) {
-    for (const col of [minColLetter, maxColLetter, avgColLetter]) {
-      const ref = `${col}${excelRow}`;
-      if (ws[ref]) {
-        ws[ref].z = "0.0";
-      }
+  // Number formats for MIN/MAX/AVG columns
+  for (let row = firstDataRow; row <= totalExcelRow; row++) {
+    for (const col of [minCol, maxCol, avgCol]) {
+      ws.getRow(row).getCell(col).numFmt = "0.0";
     }
   }
 
   // Column widths
-  const cols: XLSX.ColInfo[] = [{ wch: 55 }]; // A: category
-  for (let i = 0; i < voterCount; i++) cols.push({ wch: 10 });
-  cols.push({ wch: 3 }); // spacer
-  cols.push({ wch: 8 }); // MIN
-  cols.push({ wch: 8 }); // MAX
-  cols.push({ wch: 8 }); // AVG
-  ws["!cols"] = cols;
+  ws.getColumn(categoryCol).width = 55;
+  for (let i = 0; i < voterCount; i++) {
+    ws.getColumn(firstVoterCol + i).width = 10;
+  }
+  ws.getColumn(spacerCol).width = 3;
+  ws.getColumn(minCol).width = 8;
+  ws.getColumn(maxCol).width = 8;
+  ws.getColumn(avgCol).width = 8;
 
-  XLSX.utils.book_append_sheet(wb, ws, "Estimation Scores");
+  // Generate and download
+  const buffer = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buffer], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  });
 
-  // Filename from ticket name
   const ticketName = session.ticketName?.trim();
   const filename = ticketName
     ? `${ticketName.replace(/[^a-zA-Z0-9-_ ]/g, "")}.xlsx`
     : "estimation.xlsx";
 
-  const wbout = XLSX.write(wb, { bookType: "xlsx", type: "array" });
-  const blob = new Blob([wbout], {
-    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
