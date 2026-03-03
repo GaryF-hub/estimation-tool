@@ -78,7 +78,7 @@ export async function exportToExcel(session: EstimationSession) {
   totalWsRow.getCell(categoryCol).value = "Estimated days total";
   const avgRange = `${avgLetter}${firstDataRow}:${avgLetter}${lastDataRow}`;
   totalWsRow.getCell(avgCol).value = {
-    formula: `SUM(${avgRange})`,
+    formula: `SUMPRODUCT(ROUND(${avgRange},1))`,
   } as ExcelJS.CellFormulaValue;
 
   // Number formats for MIN/MAX/AVG columns
