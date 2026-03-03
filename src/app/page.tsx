@@ -7,14 +7,10 @@ import {
   EyeOff,
   Plus,
   Trash2,
-  UserPlus,
-  UserMinus,
   Download,
   BarChart3,
   Sparkles,
   RotateCcw,
-  Save,
-  FolderOpen,
   Link,
   Pencil,
   Copy,
@@ -22,42 +18,14 @@ import {
   Wifi,
   WifiOff,
   Users,
-  Monitor,
 } from "lucide-react";
 import {
-  Voter,
-  EstimationRow,
   EstimationSession,
   OnlineRoomState,
-  DEFAULT_CATEGORIES,
 } from "@/lib/types";
 import { exportToExcel } from "@/lib/export-excel";
-import { connectSocket, disconnectSocket } from "@/lib/socket";
+import { connectSocket, disconnectSocket, warmUpServer } from "@/lib/socket";
 import type { Socket } from "socket.io-client";
-
-function generateId() {
-  return Math.random().toString(36).slice(2, 9);
-}
-
-function createDefaultSession(): EstimationSession {
-  const voters: Voter[] = [];
-  const rows: EstimationRow[] = DEFAULT_CATEGORIES.map((cat) => ({
-    id: generateId(),
-    category: cat,
-    votes: {},
-    hidden: true,
-    isDefault: true,
-  }));
-
-  return {
-    id: generateId(),
-    ticketLink: "",
-    ticketName: "",
-    voters,
-    rows,
-    createdAt: new Date().toISOString(),
-  };
-}
 
 // Consistent colors per stat type
 const STAT_STYLES = {
@@ -69,7 +37,7 @@ const STAT_STYLES = {
 // Active cell identifier
 type ActiveCell = { rowIdx: number; voterId: string } | null;
 
-type AppMode = "lobby" | "offline" | "online";
+type AppMode = "lobby" | "online";
 
 // ── Vote Cell Component ────────────────────────────────
 
@@ -223,17 +191,17 @@ function VoteCell({
 function Lobby({
   onCreateRoom,
   onJoinRoom,
-  onGoOffline,
   connecting,
   connected,
   serverError,
+  serverStatus,
 }: {
   onCreateRoom: (voterName: string, ticketName: string) => void;
   onJoinRoom: (roomCode: string, voterName: string) => void;
-  onGoOffline: () => void;
   connecting: boolean;
   connected: boolean;
   serverError: string;
+  serverStatus: "waiting" | "warming" | "ready" | "failed";
 }) {
   const [createName, setCreateName] = useState("");
   const [createTicket, setCreateTicket] = useState("");
@@ -397,18 +365,53 @@ function Lobby({
           </div>
         </div>
 
-        {/* Connecting info */}
-        <AnimatePresence>
-          {connecting && !connected && (
+        {/* Server status / connecting info */}
+        <AnimatePresence mode="wait">
+          {connecting && !connected ? (
             <motion.p
+              key="connecting"
               initial={{ opacity: 0, y: -5 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0 }}
               className="text-center text-xs text-muted-foreground/70"
             >
-              First launch may take up to 30 seconds (using free tier). Please wait while the app starts up.
+              Connecting to server, please wait...
             </motion.p>
-          )}
+          ) : serverStatus === "warming" ? (
+            <motion.div
+              key="warming"
+              initial={{ opacity: 0, y: -5 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              className="flex items-center justify-center gap-2 text-xs text-amber-400/80"
+            >
+              <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+              Waking up server (free tier — takes ~30s on first visit)...
+            </motion.div>
+          ) : serverStatus === "ready" ? (
+            <motion.p
+              key="ready"
+              initial={{ opacity: 0, y: -5 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              className="text-center text-xs text-emerald-400/70"
+            >
+              Server ready
+            </motion.p>
+          ) : serverStatus === "failed" ? (
+            <motion.p
+              key="failed"
+              initial={{ opacity: 0, y: -5 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              className="text-center text-xs text-rose-400/70"
+            >
+              Server may be slow to respond — you can still try to connect.
+            </motion.p>
+          ) : null}
         </AnimatePresence>
 
         {/* Error */}
@@ -425,23 +428,6 @@ function Lobby({
           )}
         </AnimatePresence>
 
-        {/* Divider */}
-        <div className="flex items-center gap-3">
-          <div className="flex-1 h-px bg-border/30" />
-          <span className="text-xs text-muted-foreground/50 uppercase tracking-wider">
-            or
-          </span>
-          <div className="flex-1 h-px bg-border/30" />
-        </div>
-
-        {/* Offline mode */}
-        <button
-          onClick={onGoOffline}
-          className="w-full glass-strong rounded-xl p-4 flex items-center justify-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
-        >
-          <Monitor className="w-4 h-4" />
-          Use Offline (Solo / Facilitator Mode)
-        </button>
       </motion.div>
     </div>
   );
@@ -463,43 +449,26 @@ export default function Home() {
   const [connected, setConnected] = useState(false);
   const [codeCopied, setCodeCopied] = useState(false);
 
-  // Offline mode state (original)
-  const [session, setSession] = useState<EstimationSession>(createDefaultSession);
-  const [newVoterName, setNewVoterName] = useState("");
-  const [showAddVoter, setShowAddVoter] = useState(false);
+  // Server warm-up: "waiting" | "warming" | "ready" | "failed"
+  const [serverStatus, setServerStatus] = useState<"waiting" | "warming" | "ready" | "failed">("waiting");
+
+  // Shared UI state
   const [newRowCategory, setNewRowCategory] = useState("");
   const [showAddRow, setShowAddRow] = useState(false);
-  const [allHidden, setAllHidden] = useState(true);
   const [editingCategory, setEditingCategory] = useState<string | null>(null);
   const [activeCell, setActiveCell] = useState<ActiveCell>(null);
-  const addVoterRef = useRef<HTMLInputElement>(null);
   const addRowRef = useRef<HTMLInputElement>(null);
 
-  // ── Offline auto-save ────────────────────────────────
-  useEffect(() => {
-    if (mode !== "offline") return;
-    const saved = localStorage.getItem("estimation-session");
-    if (saved) {
-      try {
-        setSession(JSON.parse(saved));
-      } catch {
-        // ignore
-      }
-    }
-  }, [mode]);
-
-  useEffect(() => {
-    if (mode === "offline") {
-      localStorage.setItem("estimation-session", JSON.stringify(session));
-    }
-  }, [session, mode]);
-
-  useEffect(() => {
-    if (showAddVoter) addVoterRef.current?.focus();
-  }, [showAddVoter]);
   useEffect(() => {
     if (showAddRow) addRowRef.current?.focus();
   }, [showAddRow]);
+
+  // ── Pre-warm server on page load ─────────────────────
+  useEffect(() => {
+    if (mode !== "lobby") return;
+    setServerStatus("warming");
+    warmUpServer().then((ok) => setServerStatus(ok ? "ready" : "failed"));
+  }, [mode]);
 
   // ── Socket cleanup on unmount ────────────────────────
   useEffect(() => {
@@ -695,86 +664,31 @@ export default function Home() {
     []
   );
 
-  // ── Offline mode handlers (unchanged) ────────────────
-
-  const addVoter = useCallback(() => {
-    const name = newVoterName.trim();
-    if (!name) return;
-    const voter: Voter = { id: generateId(), name };
-    setSession((s) => ({ ...s, voters: [...s.voters, voter] }));
-    setNewVoterName("");
-    setShowAddVoter(false);
-  }, [newVoterName]);
-
-  const removeVoter = useCallback((voterId: string) => {
-    setSession((s) => ({
-      ...s,
-      voters: s.voters.filter((v) => v.id !== voterId),
-      rows: s.rows.map((r) => {
-        const votes = { ...r.votes };
-        delete votes[voterId];
-        return { ...r, votes };
-      }),
-    }));
-  }, []);
+  // ── Handlers ─────────────────────────────────────────
 
   const addRow = useCallback(() => {
     const category = newRowCategory.trim();
     if (!category) return;
-    if (mode === "online") {
-      emitAddCategory(category);
-    } else {
-      const row: EstimationRow = {
-        id: generateId(),
-        category,
-        votes: {},
-        hidden: allHidden,
-        isDefault: false,
-      };
-      setSession((s) => ({ ...s, rows: [...s.rows, row] }));
-    }
+    emitAddCategory(category);
     setNewRowCategory("");
     setShowAddRow(false);
-  }, [newRowCategory, allHidden, mode, emitAddCategory]);
+  }, [newRowCategory, emitAddCategory]);
 
   const removeRow = useCallback(
-    (rowId: string) => {
-      if (mode === "online") {
-        emitRemoveCategory(rowId);
-      } else {
-        setSession((s) => ({
-          ...s,
-          rows: s.rows.filter((r) => r.id !== rowId),
-        }));
-      }
-    },
-    [mode, emitRemoveCategory]
+    (rowId: string) => emitRemoveCategory(rowId),
+    [emitRemoveCategory]
   );
 
   const commitVote = useCallback(
-    (rowId: string, voterId: string, value: number | null) => {
-      if (mode === "online") {
-        emitVote(rowId, value);
-      } else {
-        setSession((s) => ({
-          ...s,
-          rows: s.rows.map((r) =>
-            r.id === rowId
-              ? { ...r, votes: { ...r.votes, [voterId]: value } }
-              : r
-          ),
-        }));
-      }
+    (rowId: string, _voterId: string, value: number | null) => {
+      emitVote(rowId, value);
     },
-    [mode, emitVote]
+    [emitVote]
   );
 
   const navigateCell = useCallback(
     (currentRowIdx: number, voterId: string, direction: "up" | "down") => {
-      const rowCount =
-        mode === "online"
-          ? onlineState?.rows.length ?? 0
-          : session.rows.length;
+      const rowCount = onlineState?.rows.length ?? 0;
       const nextIdx =
         direction === "down" ? currentRowIdx + 1 : currentRowIdx - 1;
       if (nextIdx >= 0 && nextIdx < rowCount) {
@@ -783,103 +697,30 @@ export default function Home() {
         setActiveCell(null);
       }
     },
-    [mode, onlineState?.rows.length, session.rows.length]
+    [onlineState?.rows.length]
   );
 
-  const toggleRowVisibility = useCallback((rowId: string) => {
-    setSession((s) => ({
-      ...s,
-      rows: s.rows.map((r) =>
-        r.id === rowId ? { ...r, hidden: !r.hidden } : r
-      ),
-    }));
-  }, []);
-
   const toggleAllVisibility = useCallback(() => {
-    if (mode === "online") {
-      emitToggleReveal();
-    } else {
-      const newHidden = !allHidden;
-      setAllHidden(newHidden);
-      setSession((s) => ({
-        ...s,
-        rows: s.rows.map((r) => ({ ...r, hidden: newHidden })),
-      }));
-    }
-  }, [allHidden, mode, emitToggleReveal]);
-
-  const resetSession = useCallback(() => {
-    if (
-      !confirm(
-        "Reset everything? This clears all voters, votes, and custom rows."
-      )
-    )
-      return;
-    setSession(createDefaultSession());
-    setAllHidden(true);
-    setActiveCell(null);
-  }, []);
-
-  const saveSession = useCallback(() => {
-    const json = JSON.stringify(session, null, 2);
-    const blob = new Blob([json], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `estimation-${session.ticketName || "session"}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-  }, [session]);
-
-  const loadSession = useCallback(() => {
-    const input = document.createElement("input");
-    input.type = "file";
-    input.accept = ".json";
-    input.onchange = (e) => {
-      const file = (e.target as HTMLInputElement).files?.[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        try {
-          const loaded = JSON.parse(ev.target?.result as string);
-          setSession(loaded);
-          setAllHidden(loaded.rows.every((r: EstimationRow) => r.hidden));
-        } catch {
-          alert("Invalid session file");
-        }
-      };
-      reader.readAsText(file);
-    };
-    input.click();
-  }, []);
+    emitToggleReveal();
+  }, [emitToggleReveal]);
 
   // ── Computed display data ────────────────────────────
 
-  const isOnline = mode === "online";
-  const revealed = isOnline ? onlineState?.revealed ?? false : !allHidden;
+  const revealed = onlineState?.revealed ?? false;
 
-  // Voters to display
-  const displayVoters: { id: string; name: string }[] = isOnline
-    ? onlineState?.voters ?? []
-    : session.voters;
+  const displayVoters: { id: string; name: string }[] =
+    onlineState?.voters ?? [];
 
-  // Rows to display
-  const displayRows = isOnline
-    ? (onlineState?.rows ?? []).map((r) => ({
-        id: r.id,
-        category: r.category,
-        votes: r.votes,
-        hidden: !onlineState!.revealed,
-        isDefault: r.isDefault,
-      }))
-    : session.rows;
+  const displayRows = (onlineState?.rows ?? []).map((r) => ({
+    id: r.id,
+    category: r.category,
+    votes: r.votes,
+    hidden: !onlineState!.revealed,
+    isDefault: r.isDefault,
+  }));
 
-  const displayTicketName = isOnline
-    ? onlineState?.ticketName ?? ""
-    : session.ticketName;
-  const displayTicketLink = isOnline
-    ? onlineState?.ticketLink ?? ""
-    : session.ticketLink;
+  const displayTicketName = onlineState?.ticketName ?? "";
+  const displayTicketLink = onlineState?.ticketLink ?? "";
 
   // Stats calculation
   const getRowStats = (row: {
@@ -899,14 +740,13 @@ export default function Home() {
     };
   };
 
-  const totalAvg = displayRows.reduce((sum, row) => {
+  const totalAvg = displayRows.reduce((sum: number, row) => {
     const stats = getRowStats(row);
     return sum + (stats.avg ?? 0);
   }, 0);
 
-  // Build an EstimationSession for Excel export (online mode)
+  // Build an EstimationSession for Excel export
   const getExportSession = (): EstimationSession => {
-    if (!isOnline) return session;
     return {
       id: roomCode,
       ticketName: onlineState?.ticketName ?? "",
@@ -939,10 +779,10 @@ export default function Home() {
         <Lobby
           onCreateRoom={handleCreateRoom}
           onJoinRoom={handleJoinRoom}
-          onGoOffline={() => setMode("offline")}
           connecting={connecting}
           connected={connected}
           serverError={lobbyError}
+          serverStatus={serverStatus}
         />
         <AnimatePresence>
           {lobbyError && (
@@ -960,7 +800,7 @@ export default function Home() {
     );
   }
 
-  // ── Grid mode (online + offline) ─────────────────────
+  // ── Grid mode ─────────────────────────────────────────
 
   return (
     <div className="max-w-[100vw] overflow-x-auto px-4 py-8 md:px-8">
@@ -987,91 +827,74 @@ export default function Home() {
         transition={{ delay: 0.1 }}
         className="glass-strong rounded-xl p-4 mb-6 flex flex-wrap items-center gap-3"
       >
-        {/* Online: Room code + connection status */}
-        {isOnline && (
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2">
-              {connected ? (
-                <Wifi className="w-4 h-4 text-emerald-400" />
+        {/* Room code + connection status */}
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            {connected ? (
+              <Wifi className="w-4 h-4 text-emerald-400" />
+            ) : (
+              <WifiOff className="w-4 h-4 text-rose-400" />
+            )}
+            <button
+              onClick={copyRoomCode}
+              className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-background/30 border border-border/30 hover:border-emerald-500/40 transition-colors"
+              title="Click to copy room code"
+            >
+              <span className="font-mono text-lg font-bold text-emerald-300 tracking-widest">
+                {roomCode}
+              </span>
+              {codeCopied ? (
+                <Check className="w-3.5 h-3.5 text-emerald-400" />
               ) : (
-                <WifiOff className="w-4 h-4 text-rose-400" />
+                <Copy className="w-3.5 h-3.5 text-muted-foreground" />
               )}
-              <button
-                onClick={copyRoomCode}
-                className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-background/30 border border-border/30 hover:border-emerald-500/40 transition-colors"
-                title="Click to copy room code"
-              >
-                <span className="font-mono text-lg font-bold text-emerald-300 tracking-widest">
-                  {roomCode}
-                </span>
-                {codeCopied ? (
-                  <Check className="w-3.5 h-3.5 text-emerald-400" />
-                ) : (
-                  <Copy className="w-3.5 h-3.5 text-muted-foreground" />
-                )}
-              </button>
-            </div>
-            <span className="text-xs text-muted-foreground">
-              {displayVoters.length} voter{displayVoters.length !== 1 && "s"}{" "}
-              connected
-            </span>
-            <div className="w-px h-6 bg-border/40" />
+            </button>
           </div>
-        )}
+          <span className="text-xs text-muted-foreground">
+            {displayVoters.length} voter{displayVoters.length !== 1 && "s"}{" "}
+            connected
+          </span>
+          <div className="w-px h-6 bg-border/40" />
+        </div>
 
-        {/* Ticket fields — facilitator only in online, always in offline */}
-        {(!isOnline || isFacilitator) && (
+        {/* Ticket fields — facilitator only */}
+        {isFacilitator ? (
           <div className="flex items-center gap-2 min-w-[280px]">
             <Link className="w-4 h-4 text-muted-foreground shrink-0" />
             <input
               type="text"
               placeholder="Ticket name (e.g. PROJ-1234)"
               value={displayTicketName}
-              onChange={(e) => {
-                if (isOnline) {
-                  emitUpdateTicket(e.target.value, displayTicketLink);
-                } else {
-                  setSession((s) => ({ ...s, ticketName: e.target.value }));
-                }
-              }}
+              onChange={(e) =>
+                emitUpdateTicket(e.target.value, displayTicketLink)
+              }
               className="bg-transparent border-b border-border/50 px-2 py-1 text-sm focus:outline-none focus:border-emerald-500 transition-colors w-40"
             />
             <input
               type="text"
               placeholder="Ticket URL (optional)"
               value={displayTicketLink}
-              onChange={(e) => {
-                if (isOnline) {
-                  emitUpdateTicket(displayTicketName, e.target.value);
-                } else {
-                  setSession((s) => ({ ...s, ticketLink: e.target.value }));
-                }
-              }}
+              onChange={(e) =>
+                emitUpdateTicket(displayTicketName, e.target.value)
+              }
               className="bg-transparent border-b border-border/50 px-2 py-1 text-sm focus:outline-none focus:border-emerald-500 transition-colors w-[420px]"
             />
           </div>
-        )}
-
-        {/* Online: Show ticket name for non-facilitators (read-only) */}
-        {isOnline && !isFacilitator && displayTicketName && (
+        ) : displayTicketName ? (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Link className="w-4 h-4 shrink-0" />
             <span>{displayTicketName}</span>
           </div>
-        )}
+        ) : null}
 
         {/* Buttons — pushed to far right */}
         <div className="flex items-center gap-2 flex-wrap ml-auto">
-          {/* Reveal/Hide — facilitator only in online, always in offline */}
-          {(!isOnline || isFacilitator) && (
+          {/* Reveal/Hide — facilitator only */}
+          {isFacilitator && (
             <>
               <button
                 onClick={toggleAllVisibility}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                  !revealed
-                    ? "bg-emerald-600/20 text-emerald-300 hover:bg-emerald-600/30"
-                    : "bg-emerald-600/20 text-emerald-300 hover:bg-emerald-600/30"
-                }`}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all bg-emerald-600/20 text-emerald-300 hover:bg-emerald-600/30"
                 title={
                   !revealed
                     ? "Reveal all scores so everyone can see the results"
@@ -1098,51 +921,15 @@ export default function Home() {
             Export Excel
           </button>
 
-          {/* Offline-only: Save / Load / Reset */}
-          {!isOnline && (
-            <>
-              <div className="w-px h-6 bg-border/40 mx-1" />
-              <button
-                onClick={saveSession}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-sky-600/20 text-sky-300 hover:bg-sky-600/30 transition-all"
-                title="Download this session as a JSON file"
-              >
-                <Save className="w-3.5 h-3.5" />
-                Save
-              </button>
-              <button
-                onClick={loadSession}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-cyan-600/20 text-cyan-300 hover:bg-cyan-600/30 transition-all"
-                title="Load a previously saved session JSON file"
-              >
-                <FolderOpen className="w-3.5 h-3.5" />
-                Load
-              </button>
-              <button
-                onClick={resetSession}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-rose-600/20 text-rose-300 hover:bg-rose-600/30 transition-all"
-                title="Clear everything and start fresh"
-              >
-                <RotateCcw className="w-3.5 h-3.5" />
-                Reset
-              </button>
-            </>
-          )}
-
-          {/* Online: Leave room */}
-          {isOnline && (
-            <>
-              <div className="w-px h-6 bg-border/40 mx-1" />
-              <button
-                onClick={handleLeaveRoom}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-rose-600/20 text-rose-300 hover:bg-rose-600/30 transition-all"
-                title="Leave this session and return to lobby"
-              >
-                <RotateCcw className="w-3.5 h-3.5" />
-                Leave
-              </button>
-            </>
-          )}
+          <div className="w-px h-6 bg-border/40 mx-1" />
+          <button
+            onClick={handleLeaveRoom}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-rose-600/20 text-rose-300 hover:bg-rose-600/30 transition-all"
+            title="Leave this session and return to lobby"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+            Leave
+          </button>
         </div>
       </motion.div>
 
@@ -1168,82 +955,21 @@ export default function Home() {
                     <div className="flex items-center justify-center gap-1">
                       <span
                         className={`text-xs font-semibold truncate max-w-[70px] ${
-                          isOnline && voter.id === myVoterId
+                          voter.id === myVoterId
                             ? "text-emerald-200"
                             : "text-emerald-300"
                         }`}
                       >
                         {voter.name}
-                        {isOnline && voter.id === myVoterId && (
+                        {voter.id === myVoterId && (
                           <span className="text-[10px] text-emerald-400/60 ml-1">
                             (you)
                           </span>
                         )}
                       </span>
-                      {/* Remove voter — offline only */}
-                      {!isOnline && (
-                        <button
-                          onClick={() => removeVoter(voter.id)}
-                          className="opacity-0 group-hover:opacity-100 transition-opacity text-rose-400 hover:text-rose-300"
-                          title="Remove voter"
-                        >
-                          <UserMinus className="w-3 h-3" />
-                        </button>
-                      )}
                     </div>
                   </th>
                 ))}
-                {/* Add voter — offline only */}
-                {!isOnline && (
-                  <th className="px-2 py-3 text-center min-w-[50px]">
-                    {showAddVoter ? (
-                      <div className="flex items-center gap-1">
-                        <input
-                          ref={addVoterRef}
-                          type="text"
-                          placeholder="Name"
-                          value={newVoterName}
-                          onChange={(e) => setNewVoterName(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") addVoter();
-                            if (e.key === "Escape") setShowAddVoter(false);
-                          }}
-                          className="w-20 bg-background/50 rounded px-2 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                        />
-                        <button
-                          onClick={addVoter}
-                          className="text-emerald-400 hover:text-emerald-300"
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => setShowAddVoter(true)}
-                        className="text-emerald-400 hover:text-emerald-300 transition-colors"
-                        title="Add voter"
-                      >
-                        <UserPlus className="w-4 h-4 mx-auto" />
-                      </button>
-                    )}
-                  </th>
-                )}
-                {/* Eye toggle column — offline only */}
-                {!isOnline && (
-                  <th className="px-2 py-3 text-center min-w-[44px]">
-                    <button
-                      onClick={toggleAllVisibility}
-                      className="text-emerald-400 hover:text-emerald-300 transition-colors"
-                      title={!revealed ? "Reveal all" : "Hide all"}
-                    >
-                      {!revealed ? (
-                        <EyeOff className="w-4 h-4 mx-auto" />
-                      ) : (
-                        <Eye className="w-4 h-4 mx-auto" />
-                      )}
-                    </button>
-                  </th>
-                )}
                 <th className="px-3 py-3 text-center min-w-[65px] text-xs font-semibold text-sky-400 uppercase tracking-wider">
                   MIN
                 </th>
@@ -1277,8 +1003,7 @@ export default function Home() {
                     >
                       <td className="sticky left-0 z-10 bg-[hsl(222,47%,7%)] group-hover:bg-[hsl(222,47%,9%)] transition-colors px-4 py-2.5">
                         <div className="flex items-center gap-2">
-                          {/* Remove row — facilitator only in online, always in offline */}
-                          {(!isOnline || isFacilitator) && (
+                          {isFacilitator && (
                             <button
                               onClick={() => removeRow(row.id)}
                               className="opacity-0 group-hover:opacity-100 transition-opacity text-rose-400/60 hover:text-rose-400 shrink-0"
@@ -1287,25 +1012,13 @@ export default function Home() {
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
                           )}
-                          {editingCategory === row.id &&
-                          (!isOnline || isFacilitator) ? (
+                          {editingCategory === row.id && isFacilitator ? (
                             <input
                               type="text"
                               value={row.category}
-                              onChange={(e) => {
-                                if (isOnline) {
-                                  emitEditCategory(row.id, e.target.value);
-                                } else {
-                                  setSession((s) => ({
-                                    ...s,
-                                    rows: s.rows.map((r) =>
-                                      r.id === row.id
-                                        ? { ...r, category: e.target.value }
-                                        : r
-                                    ),
-                                  }));
-                                }
-                              }}
+                              onChange={(e) =>
+                                emitEditCategory(row.id, e.target.value)
+                              }
                               onBlur={() => setEditingCategory(null)}
                               onKeyDown={(e) => {
                                 if (
@@ -1320,17 +1033,17 @@ export default function Home() {
                           ) : (
                             <span
                               onClick={() => {
-                                if (!isOnline || isFacilitator) {
+                                if (isFacilitator) {
                                   setEditingCategory(row.id);
                                 }
                               }}
                               className={`text-sm text-foreground/90 transition-colors ${
-                                !isOnline || isFacilitator
+                                isFacilitator
                                   ? "cursor-pointer hover:text-emerald-300"
                                   : ""
                               }`}
                               title={
-                                !isOnline || isFacilitator
+                                isFacilitator
                                   ? "Click to edit"
                                   : undefined
                               }
@@ -1342,8 +1055,7 @@ export default function Home() {
                       </td>
 
                       {displayVoters.map((voter) => {
-                        const isMyColumn =
-                          !isOnline || voter.id === myVoterId;
+                        const isMyColumn = voter.id === myVoterId;
                         const cellValue = row.votes[voter.id];
 
                         return (
@@ -1353,11 +1065,7 @@ export default function Home() {
                           >
                             <VoteCell
                               value={cellValue}
-                              hidden={
-                                isOnline
-                                  ? false // In online mode, visibility is handled by "hidden" vote values from server
-                                  : row.hidden
-                              }
+                              hidden={false}
                               isActive={
                                 activeCell?.rowIdx === idx &&
                                 activeCell?.voterId === voter.id
@@ -1380,28 +1088,6 @@ export default function Home() {
                           </td>
                         );
                       })}
-
-                      {/* Empty cell for add-voter column — offline only */}
-                      {!isOnline && <td className="px-1 py-1.5" />}
-
-                      {/* Per-row eye toggle — offline only */}
-                      {!isOnline && (
-                        <td className="px-2 py-1.5 text-center">
-                          <button
-                            onClick={() => toggleRowVisibility(row.id)}
-                            className="p-1.5 rounded-md transition-all text-emerald-400 bg-emerald-600/10 hover:bg-emerald-600/20"
-                            title={
-                              row.hidden ? "Reveal scores" : "Hide scores"
-                            }
-                          >
-                            {row.hidden ? (
-                              <EyeOff className="w-3.5 h-3.5" />
-                            ) : (
-                              <Eye className="w-3.5 h-3.5" />
-                            )}
-                          </button>
-                        </td>
-                      )}
 
                       <td className="px-3 py-1.5 text-center">
                         {hasVotes && revealed ? (
@@ -1453,14 +1139,11 @@ export default function Home() {
                 })}
               </AnimatePresence>
 
-              {/* Add row — facilitator only in online, always in offline */}
-              {(!isOnline || isFacilitator) && (
+              {/* Add row — facilitator only */}
+              {isFacilitator && (
                 <tr className="border-t border-border/30">
                   <td
-                    colSpan={
-                      displayVoters.length +
-                      (isOnline ? 4 : 6)
-                    }
+                    colSpan={displayVoters.length + 4}
                     className="px-4 py-2"
                   >
                     {showAddRow ? (
@@ -1528,8 +1211,6 @@ export default function Home() {
                     })()}
                   </td>
                 ))}
-                {!isOnline && <td />}
-                {!isOnline && <td />}
                 <td />
                 <td />
                 <td className="px-3 py-3 text-center">
@@ -1565,22 +1246,9 @@ export default function Home() {
         <p>
           {displayVoters.length} voter
           {displayVoters.length !== 1 && "s"} · {displayRows.length} categories
-          {isOnline ? (
-            <>
-              {" "}
-              · Room{" "}
-              <span className="font-mono text-emerald-400/60">{roomCode}</span>
-              {isFacilitator && " · You are the facilitator"}
-            </>
-          ) : (
-            <>
-              {" "}
-              · Auto-saved to browser ·{" "}
-              <span className="text-muted-foreground/30">
-                Arrow keys to navigate column
-              </span>
-            </>
-          )}
+          {" "}· Room{" "}
+          <span className="font-mono text-emerald-400/60">{roomCode}</span>
+          {isFacilitator && " · You are the facilitator"}
         </p>
       </motion.div>
     </div>

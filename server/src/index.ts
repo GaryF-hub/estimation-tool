@@ -1,7 +1,16 @@
 import { createServer } from "http";
 import { Server } from "socket.io";
 
-const httpServer = createServer();
+const httpServer = createServer((req, res) => {
+  if (req.method === "GET" && req.url === "/health") {
+    res.writeHead(200, {
+      "Content-Type": "application/json",
+      "Access-Control-Allow-Origin": "*",
+    });
+    res.end(JSON.stringify({ status: "ok" }));
+    return;
+  }
+});
 const io = new Server(httpServer, {
   cors: { origin: "*" },
 });

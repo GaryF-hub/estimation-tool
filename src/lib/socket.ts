@@ -24,3 +24,18 @@ export function disconnectSocket() {
     socket = null;
   }
 }
+
+/**
+ * Ping the server health endpoint to wake it from Render free-tier sleep.
+ * Resolves to true when the server is responsive, false on failure.
+ */
+export async function warmUpServer(): Promise<boolean> {
+  try {
+    const res = await fetch(`${SOCKET_URL}/health`, {
+      signal: AbortSignal.timeout(60000),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
