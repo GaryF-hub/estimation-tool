@@ -315,7 +315,7 @@ function Lobby({
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                   </svg>
-                  Initialising...
+                  Initialising, please wait...
                 </>
               ) : (
                 "Create & Start"
@@ -386,7 +386,7 @@ function Lobby({
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                   </svg>
-                  Initialising...
+                  Initialising, please wait...
                 </>
               ) : (
                 "Join Session"
@@ -395,9 +395,23 @@ function Lobby({
           </div>
         </div>
 
+        {/* Connecting info */}
+        <AnimatePresence>
+          {connecting && (
+            <motion.p
+              initial={{ opacity: 0, y: -5 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              className="text-center text-xs text-muted-foreground/70"
+            >
+              First launch may take up to 30 seconds. Please wait while the app starts up.
+            </motion.p>
+          )}
+        </AnimatePresence>
+
         {/* Error */}
         <AnimatePresence>
-          {(error || serverError) && (
+          {!connecting && (error || serverError) && (
             <motion.p
               initial={{ opacity: 0, y: -5 }}
               animate={{ opacity: 1, y: 0 }}
@@ -551,7 +565,7 @@ export default function Home() {
         socket.once("connect", doCreate);
         socket.once("connect_error", () => {
           setConnecting(false);
-          setLobbyError("Could not connect — please try again in a moment.");
+          setLobbyError("Could not connect — please try again.");
           disconnectSocket();
           socketRef.current = null;
         });
@@ -613,7 +627,7 @@ export default function Home() {
         socket.once("connect", doJoin);
         socket.once("connect_error", () => {
           setConnecting(false);
-          setLobbyError("Could not connect — please try again in a moment.");
+          setLobbyError("Could not connect — please try again.");
           disconnectSocket();
           socketRef.current = null;
         });
