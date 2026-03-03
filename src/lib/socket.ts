@@ -1,13 +1,12 @@
 import { io, Socket } from "socket.io-client";
 
-const SOCKET_URL =
-  process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:3001";
+const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || "";
 
 let socket: Socket | null = null;
 
 export function getSocket(): Socket {
   if (!socket) {
-    socket = io(SOCKET_URL, { autoConnect: false });
+    socket = io(SOCKET_URL || undefined, { autoConnect: false });
   }
   return socket;
 }
@@ -31,7 +30,8 @@ export function disconnectSocket() {
  */
 export async function warmUpServer(): Promise<boolean> {
   try {
-    const res = await fetch(`${SOCKET_URL}/health`, {
+    const healthUrl = SOCKET_URL ? `${SOCKET_URL}/health` : "/health";
+    const res = await fetch(healthUrl, {
       signal: AbortSignal.timeout(60000),
     });
     return res.ok;
