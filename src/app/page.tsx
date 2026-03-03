@@ -224,10 +224,14 @@ function Lobby({
   onCreateRoom,
   onJoinRoom,
   onGoOffline,
+  connecting,
+  serverError,
 }: {
   onCreateRoom: (voterName: string, ticketName: string) => void;
   onJoinRoom: (roomCode: string, voterName: string) => void;
   onGoOffline: () => void;
+  connecting: boolean;
+  serverError: string;
 }) {
   const [createName, setCreateName] = useState("");
   const [createTicket, setCreateTicket] = useState("");
@@ -267,27 +271,30 @@ function Lobby({
               type="text"
               placeholder="Your name *"
               value={createName}
+              disabled={connecting}
               onChange={(e) => setCreateName(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter" && createName.trim()) {
+                if (e.key === "Enter" && createName.trim() && !connecting) {
                   onCreateRoom(createName.trim(), createTicket.trim());
                 }
               }}
-              className="w-full bg-background/30 rounded-lg px-4 py-2.5 text-sm border border-border/30 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500 transition-colors"
+              className="w-full bg-background/30 rounded-lg px-4 py-2.5 text-sm border border-border/30 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500 transition-colors disabled:opacity-50"
             />
             <input
               type="text"
               placeholder="Ticket name (optional, e.g. PROJ-1234)"
               value={createTicket}
+              disabled={connecting}
               onChange={(e) => setCreateTicket(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter" && createName.trim()) {
+                if (e.key === "Enter" && createName.trim() && !connecting) {
                   onCreateRoom(createName.trim(), createTicket.trim());
                 }
               }}
-              className="w-full bg-background/30 rounded-lg px-4 py-2.5 text-sm border border-border/30 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500 transition-colors"
+              className="w-full bg-background/30 rounded-lg px-4 py-2.5 text-sm border border-border/30 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500 transition-colors disabled:opacity-50"
             />
             <button
+              disabled={connecting}
               onClick={() => {
                 if (!createName.trim()) {
                   setError("Enter your name to create a session");
@@ -296,9 +303,23 @@ function Lobby({
                 setError("");
                 onCreateRoom(createName.trim(), createTicket.trim());
               }}
-              className="w-full py-2.5 rounded-lg text-sm font-medium bg-emerald-600/20 text-emerald-300 hover:bg-emerald-600/30 border border-emerald-500/30 transition-all"
+              className={`w-full py-2.5 rounded-lg text-sm font-medium border transition-all flex items-center justify-center gap-2 ${
+                connecting
+                  ? "bg-emerald-600/10 text-emerald-300/50 border-emerald-500/20 cursor-wait"
+                  : "bg-emerald-600/20 text-emerald-300 hover:bg-emerald-600/30 border-emerald-500/30"
+              }`}
             >
-              Create & Start
+              {connecting ? (
+                <>
+                  <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  Connecting to server...
+                </>
+              ) : (
+                "Create & Start"
+              )}
             </button>
           </div>
         </div>
@@ -325,23 +346,26 @@ function Lobby({
               type="text"
               placeholder="Room code (e.g. ABCD)"
               value={joinCode}
+              disabled={connecting}
               onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
               maxLength={4}
-              className="w-full bg-background/30 rounded-lg px-4 py-2.5 text-sm border border-border/30 focus:outline-none focus:ring-1 focus:ring-sky-500 focus:border-sky-500 transition-colors uppercase tracking-widest text-center font-mono text-lg"
+              className="w-full bg-background/30 rounded-lg px-4 py-2.5 text-sm border border-border/30 focus:outline-none focus:ring-1 focus:ring-sky-500 focus:border-sky-500 transition-colors uppercase tracking-widest text-center font-mono text-lg disabled:opacity-50"
             />
             <input
               type="text"
               placeholder="Your name *"
               value={joinName}
+              disabled={connecting}
               onChange={(e) => setJoinName(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter" && joinCode.trim() && joinName.trim()) {
+                if (e.key === "Enter" && joinCode.trim() && joinName.trim() && !connecting) {
                   onJoinRoom(joinCode.trim(), joinName.trim());
                 }
               }}
-              className="w-full bg-background/30 rounded-lg px-4 py-2.5 text-sm border border-border/30 focus:outline-none focus:ring-1 focus:ring-sky-500 focus:border-sky-500 transition-colors"
+              className="w-full bg-background/30 rounded-lg px-4 py-2.5 text-sm border border-border/30 focus:outline-none focus:ring-1 focus:ring-sky-500 focus:border-sky-500 transition-colors disabled:opacity-50"
             />
             <button
+              disabled={connecting}
               onClick={() => {
                 if (!joinCode.trim() || !joinName.trim()) {
                   setError("Enter room code and your name to join");
@@ -350,23 +374,37 @@ function Lobby({
                 setError("");
                 onJoinRoom(joinCode.trim(), joinName.trim());
               }}
-              className="w-full py-2.5 rounded-lg text-sm font-medium bg-sky-600/20 text-sky-300 hover:bg-sky-600/30 border border-sky-500/30 transition-all"
+              className={`w-full py-2.5 rounded-lg text-sm font-medium border transition-all flex items-center justify-center gap-2 ${
+                connecting
+                  ? "bg-sky-600/10 text-sky-300/50 border-sky-500/20 cursor-wait"
+                  : "bg-sky-600/20 text-sky-300 hover:bg-sky-600/30 border border-sky-500/30"
+              }`}
             >
-              Join Session
+              {connecting ? (
+                <>
+                  <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  Connecting to server...
+                </>
+              ) : (
+                "Join Session"
+              )}
             </button>
           </div>
         </div>
 
         {/* Error */}
         <AnimatePresence>
-          {error && (
+          {(error || serverError) && (
             <motion.p
               initial={{ opacity: 0, y: -5 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0 }}
               className="text-center text-xs text-rose-400"
             >
-              {error}
+              {error || serverError}
             </motion.p>
           )}
         </AnimatePresence>
@@ -456,82 +494,140 @@ export default function Home() {
 
   // ── Online mode handlers ─────────────────────────────
 
+  const [connecting, setConnecting] = useState(false);
+
+  const setupSocket = useCallback((socket: Socket) => {
+    socket.off("connect");
+    socket.off("disconnect");
+    socket.off("room-state");
+    socket.off("connect_error");
+
+    socket.on("connect", () => setConnected(true));
+    socket.on("disconnect", () => setConnected(false));
+    socket.on("room-state", (state: OnlineRoomState) => {
+      setOnlineState(state);
+    });
+  }, []);
+
   const handleCreateRoom = useCallback(
     (voterName: string, ticketName: string) => {
+      setConnecting(true);
+      setLobbyError("");
+
       const socket = connectSocket();
       socketRef.current = socket;
+      setupSocket(socket);
 
-      socket.on("connect", () => setConnected(true));
-      socket.on("disconnect", () => setConnected(false));
-
-      socket.on("room-state", (state: OnlineRoomState) => {
-        setOnlineState(state);
-      });
-
-      socket.emit(
-        "create-room",
-        { voterName, ticketName, ticketLink: "" },
-        (response: {
-          success: boolean;
-          roomCode: string;
-          voterId: string;
-          isFacilitator: boolean;
-          state: OnlineRoomState;
-          error?: string;
-        }) => {
-          if (response.success) {
-            setMode("online");
-            setRoomCode(response.roomCode);
-            setMyVoterId(response.voterId);
-            setIsFacilitator(response.isFacilitator);
-            setOnlineState(response.state);
-            setLobbyError("");
-          } else {
-            setLobbyError(response.error || "Failed to create room");
+      const doCreate = () => {
+        socket.emit(
+          "create-room",
+          { voterName, ticketName, ticketLink: "" },
+          (response: {
+            success: boolean;
+            roomCode: string;
+            voterId: string;
+            isFacilitator: boolean;
+            state: OnlineRoomState;
+            error?: string;
+          }) => {
+            setConnecting(false);
+            if (response.success) {
+              setMode("online");
+              setRoomCode(response.roomCode);
+              setMyVoterId(response.voterId);
+              setIsFacilitator(response.isFacilitator);
+              setOnlineState(response.state);
+              setLobbyError("");
+            } else {
+              setLobbyError(response.error || "Failed to create room");
+            }
           }
-        }
-      );
+        );
+      };
+
+      if (socket.connected) {
+        doCreate();
+      } else {
+        socket.once("connect", doCreate);
+        socket.once("connect_error", () => {
+          setConnecting(false);
+          setLobbyError("Cannot reach server. It may be waking up — try again in 30 seconds.");
+          disconnectSocket();
+          socketRef.current = null;
+        });
+        // Timeout after 45 seconds
+        setTimeout(() => {
+          if (!socket.connected) {
+            setConnecting(false);
+            setLobbyError("Server is taking too long to respond. Try again in a moment.");
+            disconnectSocket();
+            socketRef.current = null;
+          }
+        }, 45000);
+      }
     },
-    []
+    [setupSocket]
   );
 
   const handleJoinRoom = useCallback(
     (code: string, voterName: string) => {
+      setConnecting(true);
+      setLobbyError("");
+
       const socket = connectSocket();
       socketRef.current = socket;
+      setupSocket(socket);
 
-      socket.on("connect", () => setConnected(true));
-      socket.on("disconnect", () => setConnected(false));
-
-      socket.on("room-state", (state: OnlineRoomState) => {
-        setOnlineState(state);
-      });
-
-      socket.emit(
-        "join-room",
-        { roomCode: code, voterName },
-        (response: {
-          success: boolean;
-          roomCode: string;
-          voterId: string;
-          isFacilitator: boolean;
-          state: OnlineRoomState;
-          error?: string;
-        }) => {
-          if (response.success) {
-            setMode("online");
-            setRoomCode(response.roomCode);
-            setMyVoterId(response.voterId);
-            setIsFacilitator(response.isFacilitator);
-            setOnlineState(response.state);
-            setLobbyError("");
-          } else {
-            setLobbyError(response.error || "Failed to join room");
+      const doJoin = () => {
+        socket.emit(
+          "join-room",
+          { roomCode: code, voterName },
+          (response: {
+            success: boolean;
+            roomCode: string;
+            voterId: string;
+            isFacilitator: boolean;
+            state: OnlineRoomState;
+            error?: string;
+          }) => {
+            setConnecting(false);
+            if (response.success) {
+              setMode("online");
+              setRoomCode(response.roomCode);
+              setMyVoterId(response.voterId);
+              setIsFacilitator(response.isFacilitator);
+              setOnlineState(response.state);
+              setLobbyError("");
+            } else {
+              setLobbyError(response.error || "Failed to join room");
+              disconnectSocket();
+              socketRef.current = null;
+            }
           }
-        }
-      );
+        );
+      };
+
+      if (socket.connected) {
+        doJoin();
+      } else {
+        socket.once("connect", doJoin);
+        socket.once("connect_error", () => {
+          setConnecting(false);
+          setLobbyError("Cannot reach server. It may be waking up — try again in 30 seconds.");
+          disconnectSocket();
+          socketRef.current = null;
+        });
+        setTimeout(() => {
+          if (!socket.connected) {
+            setConnecting(false);
+            setLobbyError("Server is taking too long to respond. Try again in a moment.");
+            disconnectSocket();
+            socketRef.current = null;
+          }
+        }, 45000);
+      }
     },
-    []
+    [setupSocket]
   );
 
   const handleLeaveRoom = useCallback(() => {
@@ -828,6 +924,8 @@ export default function Home() {
           onCreateRoom={handleCreateRoom}
           onJoinRoom={handleJoinRoom}
           onGoOffline={() => setMode("offline")}
+          connecting={connecting}
+          serverError={lobbyError}
         />
         <AnimatePresence>
           {lobbyError && (
