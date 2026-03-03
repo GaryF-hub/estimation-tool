@@ -225,12 +225,14 @@ function Lobby({
   onJoinRoom,
   onGoOffline,
   connecting,
+  connected,
   serverError,
 }: {
   onCreateRoom: (voterName: string, ticketName: string) => void;
   onJoinRoom: (roomCode: string, voterName: string) => void;
   onGoOffline: () => void;
   connecting: boolean;
+  connected: boolean;
   serverError: string;
 }) {
   const [createName, setCreateName] = useState("");
@@ -397,14 +399,14 @@ function Lobby({
 
         {/* Connecting info */}
         <AnimatePresence>
-          {connecting && (
+          {connecting && !connected && (
             <motion.p
               initial={{ opacity: 0, y: -5 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0 }}
               className="text-center text-xs text-muted-foreground/70"
             >
-              First launch may take up to 30 seconds. Please wait while the app starts up.
+              First launch may take up to 30 seconds (using free tier). Please wait while the app starts up.
             </motion.p>
           )}
         </AnimatePresence>
@@ -939,6 +941,7 @@ export default function Home() {
           onJoinRoom={handleJoinRoom}
           onGoOffline={() => setMode("offline")}
           connecting={connecting}
+          connected={connected}
           serverError={lobbyError}
         />
         <AnimatePresence>
