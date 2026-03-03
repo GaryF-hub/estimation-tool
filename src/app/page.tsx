@@ -315,7 +315,7 @@ function Lobby({
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                   </svg>
-                  Connecting to server...
+                  Initialising...
                 </>
               ) : (
                 "Create & Start"
@@ -386,7 +386,7 @@ function Lobby({
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                   </svg>
-                  Connecting to server...
+                  Initialising...
                 </>
               ) : (
                 "Join Session"
@@ -551,7 +551,7 @@ export default function Home() {
         socket.once("connect", doCreate);
         socket.once("connect_error", () => {
           setConnecting(false);
-          setLobbyError("Cannot reach server. It may be waking up — try again in 30 seconds.");
+          setLobbyError("Could not connect — please try again in a moment.");
           disconnectSocket();
           socketRef.current = null;
         });
@@ -559,7 +559,7 @@ export default function Home() {
         setTimeout(() => {
           if (!socket.connected) {
             setConnecting(false);
-            setLobbyError("Server is taking too long to respond. Try again in a moment.");
+            setLobbyError("Connection timed out — please try again.");
             disconnectSocket();
             socketRef.current = null;
           }
@@ -613,14 +613,14 @@ export default function Home() {
         socket.once("connect", doJoin);
         socket.once("connect_error", () => {
           setConnecting(false);
-          setLobbyError("Cannot reach server. It may be waking up — try again in 30 seconds.");
+          setLobbyError("Could not connect — please try again in a moment.");
           disconnectSocket();
           socketRef.current = null;
         });
         setTimeout(() => {
           if (!socket.connected) {
             setConnecting(false);
-            setLobbyError("Server is taking too long to respond. Try again in a moment.");
+            setLobbyError("Connection timed out — please try again.");
             disconnectSocket();
             socketRef.current = null;
           }
