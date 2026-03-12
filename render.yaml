@@ -1,0 +1,24 @@
+services:
+  # Static frontend — loads instantly, no cold start
+  - type: web
+    name: estimation-tool
+    runtime: static
+    buildCommand: npm install && npm run render:build:static
+    staticPublishPath: ./out
+    envVars:
+      - key: NEXT_PUBLIC_SOCKET_URL
+        sync: false
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+
+  # WebSocket server — may cold start on free tier, but frontend is already loaded
+  - type: web
+    name: estimation-tool-api
+    runtime: node
+    buildCommand: npm run render:build:server
+    startCommand: npm run render:start:server
+    envVars:
+      - key: NODE_ENV
+        value: production

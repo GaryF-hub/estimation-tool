@@ -1,10 +1,5 @@
 import { createServer } from "http";
 import { Server } from "socket.io";
-import path from "path";
-import sirv from "sirv";
-
-const STATIC_DIR = path.join(__dirname, "../../out");
-const serve = sirv(STATIC_DIR, { single: false, etag: true });
 
 const httpServer = createServer((req, res) => {
   if (req.method === "GET" && req.url === "/health") {
@@ -16,11 +11,8 @@ const httpServer = createServer((req, res) => {
     return;
   }
 
-  // Serve static frontend files
-  serve(req, res, () => {
-    res.writeHead(404);
-    res.end("Not Found");
-  });
+  res.writeHead(404);
+  res.end("Not Found");
 });
 const io = new Server(httpServer, {
   cors: { origin: "*" },

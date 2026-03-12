@@ -18,10 +18,12 @@ import {
   Wifi,
   WifiOff,
   Users,
+  Loader2,
 } from "lucide-react";
 import {
   EstimationSession,
   OnlineRoomState,
+  DEFAULT_CATEGORIES,
 } from "@/lib/types";
 import { exportToExcel } from "@/lib/export-excel";
 import { connectSocket, disconnectSocket, warmUpServer } from "@/lib/socket";
@@ -191,17 +193,11 @@ function VoteCell({
 function Lobby({
   onCreateRoom,
   onJoinRoom,
-  connecting,
-  connected,
   serverError,
-  serverStatus,
 }: {
   onCreateRoom: (voterName: string, ticketName: string) => void;
   onJoinRoom: (roomCode: string, voterName: string) => void;
-  connecting: boolean;
-  connected: boolean;
   serverError: string;
-  serverStatus: "waiting" | "warming" | "ready" | "failed";
 }) {
   const [createName, setCreateName] = useState("");
   const [createTicket, setCreateTicket] = useState("");
@@ -241,30 +237,27 @@ function Lobby({
               type="text"
               placeholder="Your name *"
               value={createName}
-              disabled={connecting}
               onChange={(e) => setCreateName(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter" && createName.trim() && !connecting) {
+                if (e.key === "Enter" && createName.trim()) {
                   onCreateRoom(createName.trim(), createTicket.trim());
                 }
               }}
-              className="w-full bg-background/30 rounded-lg px-4 py-2.5 text-sm border border-border/30 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500 transition-colors disabled:opacity-50"
+              className="w-full bg-background/30 rounded-lg px-4 py-2.5 text-sm border border-border/30 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500 transition-colors"
             />
             <input
               type="text"
               placeholder="Ticket name (optional, e.g. PROJ-1234)"
               value={createTicket}
-              disabled={connecting}
               onChange={(e) => setCreateTicket(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter" && createName.trim() && !connecting) {
+                if (e.key === "Enter" && createName.trim()) {
                   onCreateRoom(createName.trim(), createTicket.trim());
                 }
               }}
-              className="w-full bg-background/30 rounded-lg px-4 py-2.5 text-sm border border-border/30 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500 transition-colors disabled:opacity-50"
+              className="w-full bg-background/30 rounded-lg px-4 py-2.5 text-sm border border-border/30 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500 transition-colors"
             />
             <button
-              disabled={connecting}
               onClick={() => {
                 if (!createName.trim()) {
                   setError("Enter your name to create a session");
@@ -273,23 +266,9 @@ function Lobby({
                 setError("");
                 onCreateRoom(createName.trim(), createTicket.trim());
               }}
-              className={`w-full py-2.5 rounded-lg text-sm font-medium border transition-all flex items-center justify-center gap-2 ${
-                connecting
-                  ? "bg-emerald-600/10 text-emerald-300/50 border-emerald-500/20 cursor-wait"
-                  : "bg-emerald-600/20 text-emerald-300 hover:bg-emerald-600/30 border-emerald-500/30"
-              }`}
+              className="w-full py-2.5 rounded-lg text-sm font-medium border transition-all bg-emerald-600/20 text-emerald-300 hover:bg-emerald-600/30 border-emerald-500/30"
             >
-              {connecting ? (
-                <>
-                  <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                  </svg>
-                  Initialising, please wait...
-                </>
-              ) : (
-                "Create & Start"
-              )}
+              Create & Start
             </button>
           </div>
         </div>
@@ -316,26 +295,23 @@ function Lobby({
               type="text"
               placeholder="Room code (e.g. ABCD)"
               value={joinCode}
-              disabled={connecting}
               onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
               maxLength={4}
-              className="w-full bg-background/30 rounded-lg px-4 py-2.5 text-sm border border-border/30 focus:outline-none focus:ring-1 focus:ring-sky-500 focus:border-sky-500 transition-colors uppercase tracking-widest text-center font-mono text-lg disabled:opacity-50"
+              className="w-full bg-background/30 rounded-lg px-4 py-2.5 text-sm border border-border/30 focus:outline-none focus:ring-1 focus:ring-sky-500 focus:border-sky-500 transition-colors uppercase tracking-widest text-center font-mono text-lg"
             />
             <input
               type="text"
               placeholder="Your name *"
               value={joinName}
-              disabled={connecting}
               onChange={(e) => setJoinName(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter" && joinCode.trim() && joinName.trim() && !connecting) {
+                if (e.key === "Enter" && joinCode.trim() && joinName.trim()) {
                   onJoinRoom(joinCode.trim(), joinName.trim());
                 }
               }}
-              className="w-full bg-background/30 rounded-lg px-4 py-2.5 text-sm border border-border/30 focus:outline-none focus:ring-1 focus:ring-sky-500 focus:border-sky-500 transition-colors disabled:opacity-50"
+              className="w-full bg-background/30 rounded-lg px-4 py-2.5 text-sm border border-border/30 focus:outline-none focus:ring-1 focus:ring-sky-500 focus:border-sky-500 transition-colors"
             />
             <button
-              disabled={connecting}
               onClick={() => {
                 if (!joinCode.trim() || !joinName.trim()) {
                   setError("Enter room code and your name to join");
@@ -344,79 +320,16 @@ function Lobby({
                 setError("");
                 onJoinRoom(joinCode.trim(), joinName.trim());
               }}
-              className={`w-full py-2.5 rounded-lg text-sm font-medium border transition-all flex items-center justify-center gap-2 ${
-                connecting
-                  ? "bg-sky-600/10 text-sky-300/50 border-sky-500/20 cursor-wait"
-                  : "bg-sky-600/20 text-sky-300 hover:bg-sky-600/30 border border-sky-500/30"
-              }`}
+              className="w-full py-2.5 rounded-lg text-sm font-medium border transition-all bg-sky-600/20 text-sky-300 hover:bg-sky-600/30 border-sky-500/30"
             >
-              {connecting ? (
-                <>
-                  <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                  </svg>
-                  Initialising, please wait...
-                </>
-              ) : (
-                "Join Session"
-              )}
+              Join Session
             </button>
           </div>
         </div>
 
-        {/* Server status / connecting info */}
-        <AnimatePresence mode="wait">
-          {connecting && !connected ? (
-            <motion.p
-              key="connecting"
-              initial={{ opacity: 0, y: -5 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }}
-              className="text-center text-xs text-muted-foreground/70"
-            >
-              Connecting to server, please wait...
-            </motion.p>
-          ) : serverStatus === "warming" ? (
-            <motion.div
-              key="warming"
-              initial={{ opacity: 0, y: -5 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }}
-              className="flex items-center justify-center gap-2 text-xs text-amber-400/80"
-            >
-              <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-              </svg>
-              Waking up server (free tier — takes ~30s on first visit)...
-            </motion.div>
-          ) : serverStatus === "ready" ? (
-            <motion.p
-              key="ready"
-              initial={{ opacity: 0, y: -5 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }}
-              className="text-center text-xs text-emerald-400/70"
-            >
-              Server ready
-            </motion.p>
-          ) : serverStatus === "failed" ? (
-            <motion.p
-              key="failed"
-              initial={{ opacity: 0, y: -5 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }}
-              className="text-center text-xs text-rose-400/70"
-            >
-              Server may be slow to respond — you can still try to connect.
-            </motion.p>
-          ) : null}
-        </AnimatePresence>
-
         {/* Error */}
         <AnimatePresence>
-          {!connecting && (error || serverError) && (
+          {(error || serverError) && (
             <motion.p
               initial={{ opacity: 0, y: -5 }}
               animate={{ opacity: 1, y: 0 }}
@@ -449,9 +362,6 @@ export default function Home() {
   const [connected, setConnected] = useState(false);
   const [codeCopied, setCodeCopied] = useState(false);
 
-  // Server warm-up: "waiting" | "warming" | "ready" | "failed"
-  const [serverStatus, setServerStatus] = useState<"waiting" | "warming" | "ready" | "failed">("waiting");
-
   // Shared UI state
   const [newRowCategory, setNewRowCategory] = useState("");
   const [showAddRow, setShowAddRow] = useState(false);
@@ -463,11 +373,10 @@ export default function Home() {
     if (showAddRow) addRowRef.current?.focus();
   }, [showAddRow]);
 
-  // ── Pre-warm server on page load ─────────────────────
+  // ── Pre-warm server on page load (silent) ───────────
   useEffect(() => {
     if (mode !== "lobby") return;
-    setServerStatus("warming");
-    warmUpServer().then((ok) => setServerStatus(ok ? "ready" : "failed"));
+    warmUpServer();
   }, [mode]);
 
   // ── Socket cleanup on unmount ────────────────────────
@@ -480,6 +389,7 @@ export default function Home() {
   // ── Online mode handlers ─────────────────────────────
 
   const [connecting, setConnecting] = useState(false);
+  const [connectingAction, setConnectingAction] = useState<"create" | "join" | null>(null);
 
   const setupSocket = useCallback((socket: Socket) => {
     socket.off("connect");
@@ -496,9 +406,33 @@ export default function Home() {
 
   const handleCreateRoom = useCallback(
     (voterName: string, ticketName: string) => {
-      setConnecting(true);
       setLobbyError("");
 
+      // Immediately show the grid with optimistic state
+      const tempVoterId = "temp-" + Math.random().toString(36).slice(2, 9);
+      const optimisticState: OnlineRoomState = {
+        code: "",
+        ticketName: ticketName || "",
+        ticketLink: "",
+        voters: [{ id: tempVoterId, name: voterName, isFacilitator: true }],
+        rows: DEFAULT_CATEGORIES.map((cat, i) => ({
+          id: `temp-${i}`,
+          category: cat,
+          isDefault: true,
+          votes: {},
+        })),
+        revealed: false,
+      };
+
+      setMode("online");
+      setRoomCode("");
+      setMyVoterId(tempVoterId);
+      setIsFacilitator(true);
+      setOnlineState(optimisticState);
+      setConnecting(true);
+      setConnectingAction("create");
+
+      // Connect socket in background
       const socket = connectSocket();
       socketRef.current = socket;
       setupSocket(socket);
@@ -516,15 +450,18 @@ export default function Home() {
             error?: string;
           }) => {
             setConnecting(false);
+            setConnectingAction(null);
             if (response.success) {
-              setMode("online");
               setRoomCode(response.roomCode);
               setMyVoterId(response.voterId);
               setIsFacilitator(response.isFacilitator);
               setOnlineState(response.state);
-              setLobbyError("");
             } else {
+              // Failed — go back to lobby
+              setMode("lobby");
               setLobbyError(response.error || "Failed to create room");
+              disconnectSocket();
+              socketRef.current = null;
             }
           }
         );
@@ -536,6 +473,8 @@ export default function Home() {
         socket.once("connect", doCreate);
         socket.once("connect_error", () => {
           setConnecting(false);
+          setConnectingAction(null);
+          setMode("lobby");
           setLobbyError("Could not connect — please try again.");
           disconnectSocket();
           socketRef.current = null;
@@ -544,6 +483,8 @@ export default function Home() {
         setTimeout(() => {
           if (!socket.connected) {
             setConnecting(false);
+            setConnectingAction(null);
+            setMode("lobby");
             setLobbyError("Connection timed out — please try again.");
             disconnectSocket();
             socketRef.current = null;
@@ -557,6 +498,7 @@ export default function Home() {
   const handleJoinRoom = useCallback(
     (code: string, voterName: string) => {
       setConnecting(true);
+      setConnectingAction("join");
       setLobbyError("");
 
       const socket = connectSocket();
@@ -576,6 +518,7 @@ export default function Home() {
             error?: string;
           }) => {
             setConnecting(false);
+            setConnectingAction(null);
             if (response.success) {
               setMode("online");
               setRoomCode(response.roomCode);
@@ -598,6 +541,7 @@ export default function Home() {
         socket.once("connect", doJoin);
         socket.once("connect_error", () => {
           setConnecting(false);
+          setConnectingAction(null);
           setLobbyError("Could not connect — please try again.");
           disconnectSocket();
           socketRef.current = null;
@@ -605,6 +549,7 @@ export default function Home() {
         setTimeout(() => {
           if (!socket.connected) {
             setConnecting(false);
+            setConnectingAction(null);
             setLobbyError("Connection timed out — please try again.");
             disconnectSocket();
             socketRef.current = null;
@@ -624,6 +569,8 @@ export default function Home() {
     setIsFacilitator(false);
     setRoomCode("");
     setConnected(false);
+    setConnecting(false);
+    setConnectingAction(null);
   }, []);
 
   const copyRoomCode = useCallback(() => {
@@ -775,28 +722,57 @@ export default function Home() {
 
   if (mode === "lobby") {
     return (
-      <>
-        <Lobby
-          onCreateRoom={handleCreateRoom}
-          onJoinRoom={handleJoinRoom}
-          connecting={connecting}
-          connected={connected}
-          serverError={lobbyError}
-          serverStatus={serverStatus}
-        />
-        <AnimatePresence>
-          {lobbyError && (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }}
-              className="fixed bottom-6 left-1/2 -translate-x-1/2 px-4 py-2 rounded-lg bg-rose-600/20 border border-rose-500/30 text-rose-300 text-sm"
-            >
-              {lobbyError}
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </>
+      <AnimatePresence mode="wait">
+        {connecting ? (
+          <motion.div
+            key="connecting-screen"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="min-h-screen flex items-center justify-center px-4"
+          >
+            <div className="text-center space-y-6">
+              <div className="flex items-center justify-center gap-3 mb-2">
+                <BarChart3 className="w-8 h-8 text-emerald-400" />
+                <h1 className="text-4xl font-bold gradient-text">EstiMate</h1>
+              </div>
+              <div className="flex flex-col items-center gap-4">
+                <Loader2 className="w-8 h-8 text-emerald-400 animate-spin" />
+                <p className="text-muted-foreground text-sm">
+                  {connectingAction === "create"
+                    ? "Setting up your room..."
+                    : "Joining session..."}
+                </p>
+              </div>
+            </div>
+          </motion.div>
+        ) : (
+          <motion.div
+            key="lobby-screen"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <Lobby
+              onCreateRoom={handleCreateRoom}
+              onJoinRoom={handleJoinRoom}
+              serverError={lobbyError}
+            />
+            <AnimatePresence>
+              {lobbyError && (
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  className="fixed bottom-6 left-1/2 -translate-x-1/2 px-4 py-2 rounded-lg bg-rose-600/20 border border-rose-500/30 text-rose-300 text-sm"
+                >
+                  {lobbyError}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </motion.div>
+        )}
+      </AnimatePresence>
     );
   }
 
@@ -830,11 +806,14 @@ export default function Home() {
         {/* Room code + connection status */}
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
-            {connected ? (
+            {connecting ? (
+              <Loader2 className="w-4 h-4 text-amber-400 animate-spin" />
+            ) : connected ? (
               <Wifi className="w-4 h-4 text-emerald-400" />
             ) : (
               <WifiOff className="w-4 h-4 text-rose-400" />
             )}
+            {roomCode ? (
             <button
               onClick={copyRoomCode}
               className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-background/30 border border-border/30 hover:border-emerald-500/40 transition-colors"
@@ -849,10 +828,16 @@ export default function Home() {
                 <Copy className="w-3.5 h-3.5 text-muted-foreground" />
               )}
             </button>
+            ) : (
+              <span className="text-xs text-amber-400/80">
+                Connecting...
+              </span>
+            )}
           </div>
           <span className="text-xs text-muted-foreground">
-            {displayVoters.length} voter{displayVoters.length !== 1 && "s"}{" "}
-            connected
+            {connecting
+              ? "Setting up room..."
+              : `${displayVoters.length} voter${displayVoters.length !== 1 ? "s" : ""} connected`}
           </span>
           <div className="w-px h-6 bg-border/40" />
         </div>
