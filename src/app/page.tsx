@@ -220,7 +220,7 @@ function Lobby({
             <Sparkles className="w-6 h-6 text-emerald-400 animate-pulse" />
           </div>
           <p className="text-muted-foreground text-sm">
-            Team estimation tool — planning poker style
+            Team estimation tool — estimate the amount of days it would take for each category
           </p>
         </div>
 
@@ -561,6 +561,17 @@ export default function Home() {
   );
 
   const handleLeaveRoom = useCallback(() => {
+    const hasVotes = onlineState?.rows.some((r) =>
+      Object.values(r.votes).some((v) => typeof v === "number")
+    );
+    if (
+      hasVotes &&
+      !window.confirm(
+        "Have you exported to Excel? Any votes entered will be lost if you leave now."
+      )
+    ) {
+      return;
+    }
     disconnectSocket();
     socketRef.current = null;
     setMode("lobby");
@@ -571,7 +582,17 @@ export default function Home() {
     setConnected(false);
     setConnecting(false);
     setConnectingAction(null);
-  }, []);
+  }, [onlineState]);
+
+  // Warn before closing/refreshing tab when in an online room
+  useEffect(() => {
+    if (mode !== "online" || !connected) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [mode, connected]);
 
   const copyRoomCode = useCallback(() => {
     navigator.clipboard.writeText(roomCode);
@@ -682,8 +703,8 @@ export default function Home() {
       max: Math.max(...numericVotes),
       avg:
         Math.round(
-          (numericVotes.reduce((a, b) => a + b, 0) / numericVotes.length) * 10
-        ) / 10,
+          (numericVotes.reduce((a, b) => a + b, 0) / numericVotes.length) * 100
+        ) / 100,
     };
   };
 
@@ -792,7 +813,7 @@ export default function Home() {
           <Sparkles className="w-6 h-6 text-emerald-400 animate-pulse" />
         </div>
         <p className="text-muted-foreground text-sm">
-          Team estimation tool — planning poker style
+          Team estimation tool — estimate the amount of days it would take for each category
         </p>
       </motion.div>
 
@@ -1190,7 +1211,7 @@ export default function Home() {
                       );
                       return anyVoted && revealed ? (
                         <span className="text-xs font-mono font-bold text-emerald-300">
-                          {Math.round(voterTotal * 10) / 10}
+                          {Math.round(voterTotal * 100) / 100}
                         </span>
                       ) : null;
                     })()}
@@ -1207,7 +1228,7 @@ export default function Home() {
                       className="inline-block px-3 py-1 rounded-lg bg-emerald-600/20 border border-emerald-500/30"
                     >
                       <span className="text-lg font-bold font-mono text-emerald-300">
-                        {Math.round(totalAvg * 10) / 10}
+                        {Math.round(totalAvg * 100) / 100}
                       </span>
                       <span className="text-[10px] text-emerald-400 ml-1">
                         days

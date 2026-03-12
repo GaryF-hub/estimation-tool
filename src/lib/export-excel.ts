@@ -78,13 +78,13 @@ export async function exportToExcel(session: EstimationSession) {
   totalWsRow.getCell(categoryCol).value = "Estimated days total";
   const avgRange = `${avgLetter}${firstDataRow}:${avgLetter}${lastDataRow}`;
   totalWsRow.getCell(avgCol).value = {
-    formula: `SUMPRODUCT(ROUND(${avgRange},1))`,
+    formula: `SUMPRODUCT(ROUND(${avgRange},2))`,
   } as ExcelJS.CellFormulaValue;
 
   // Number formats for MIN/MAX/AVG columns
   for (let row = firstDataRow; row <= totalExcelRow; row++) {
     for (const col of [minCol, maxCol, avgCol]) {
-      ws.getRow(row).getCell(col).numFmt = "0.0";
+      ws.getRow(row).getCell(col).numFmt = "0.00";
     }
   }
 
