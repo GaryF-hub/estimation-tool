@@ -362,6 +362,9 @@ export default function Home() {
   const [connected, setConnected] = useState(false);
   const [codeCopied, setCodeCopied] = useState(false);
 
+  // Queue votes made while disconnected, keyed by category name
+  const pendingVotesRef = useRef<Map<string, number | null>>(new Map());
+
   // Shared UI state
   const [newRowCategory, setNewRowCategory] = useState("");
   const [showAddRow, setShowAddRow] = useState(false);
@@ -456,6 +459,19 @@ export default function Home() {
               setMyVoterId(response.voterId);
               setIsFacilitator(response.isFacilitator);
               setOnlineState(response.state);
+
+              // Replay any votes entered while connecting
+              if (pendingVotesRef.current.size > 0) {
+                pendingVotesRef.current.forEach((value, category) => {
+                  const realRow = response.state.rows.find(
+                    (r) => r.category === category
+                  );
+                  if (realRow) {
+                    socket.emit("vote", { rowId: realRow.id, value });
+                  }
+                });
+                pendingVotesRef.current.clear();
+              }
             } else {
               // Failed — go back to lobby
               setMode("lobby");
@@ -540,6 +556,7 @@ export default function Home() {
     }
     disconnectSocket();
     socketRef.current = null;
+    pendingVotesRef.current.clear();
     setMode("lobby");
     setOnlineState(null);
     setMyVoterId(null);
@@ -570,9 +587,26 @@ export default function Home() {
 
   const emitVote = useCallback(
     (rowId: string, value: number | null) => {
-      socketRef.current?.emit("vote", { rowId, value });
+      if (socketRef.current?.connected) {
+        socketRef.current.emit("vote", { rowId, value });
+      } else {
+        // Queue the vote and update local optimistic state
+        const category = onlineState?.rows.find((r) => r.id === rowId)?.category;
+        if (category) pendingVotesRef.current.set(category, value);
+        setOnlineState((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            rows: prev.rows.map((r) =>
+              r.id === rowId
+                ? { ...r, votes: { ...r.votes, [myVoterId!]: value } }
+                : r
+            ),
+          };
+        });
+      }
     },
-    []
+    [onlineState?.rows, myVoterId]
   );
 
   const emitToggleReveal = useCallback(() => {
