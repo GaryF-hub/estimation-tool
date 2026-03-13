@@ -470,26 +470,8 @@ export default function Home() {
       if (socket.connected) {
         doCreate();
       } else {
+        // Socket.IO will keep retrying automatically — just wait for connect
         socket.once("connect", doCreate);
-        socket.once("connect_error", () => {
-          setConnecting(false);
-          setConnectingAction(null);
-          setMode("lobby");
-          setLobbyError("Could not connect — please try again.");
-          disconnectSocket();
-          socketRef.current = null;
-        });
-        // Timeout after 45 seconds
-        setTimeout(() => {
-          if (!socket.connected) {
-            setConnecting(false);
-            setConnectingAction(null);
-            setMode("lobby");
-            setLobbyError("Connection timed out — please try again.");
-            disconnectSocket();
-            socketRef.current = null;
-          }
-        }, 45000);
       }
     },
     [setupSocket]
@@ -539,22 +521,6 @@ export default function Home() {
         doJoin();
       } else {
         socket.once("connect", doJoin);
-        socket.once("connect_error", () => {
-          setConnecting(false);
-          setConnectingAction(null);
-          setLobbyError("Could not connect — please try again.");
-          disconnectSocket();
-          socketRef.current = null;
-        });
-        setTimeout(() => {
-          if (!socket.connected) {
-            setConnecting(false);
-            setConnectingAction(null);
-            setLobbyError("Connection timed out — please try again.");
-            disconnectSocket();
-            socketRef.current = null;
-          }
-        }, 45000);
       }
     },
     [setupSocket]
@@ -763,6 +729,9 @@ export default function Home() {
                   {connectingAction === "create"
                     ? "Setting up your room..."
                     : "Joining session..."}
+                </p>
+                <p className="text-muted-foreground/50 text-xs">
+                  Server may take a moment to wake up
                 </p>
               </div>
             </div>
